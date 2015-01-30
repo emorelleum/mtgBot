@@ -1,6 +1,5 @@
 import praw
 import json
-import time
 
 #Assembles a list of consecutive strings in array stringy of length 'length'
 def assembleStrings(stringy, length):
@@ -18,7 +17,7 @@ def searchForCards(message):
 	#strip out all keyboard punctuation
 	messager = message.replace('`','').replace('~','').replace('!','').replace('@','').replace('#','').replace('$','').replace('%','').replace('^','').replace('&','').replace('*','').replace('(','').replace(')','').replace('-','').replace('+','').replace('=','').replace('{','').replace('[','').replace('}','').replace(']','').replace(':','').replace(';','').replace('\"','').replace('\'','').replace('<','').replace(',','').replace('>','').replace('.','').replace('?','').replace('/','').replace('|','').replace('\\','').lower()
 
-	#Special case for card name _____
+	#Special case for card name _____ (5 underscores). To the best of my knowledge, this is the only card whose name is composed entirely of punctuation
 	if "_____" in messager:
 		ret.append(data["_____"])
 
@@ -31,8 +30,7 @@ def searchForCards(message):
 
 	messagy = messager.split()
 #print messager
-	#There is one card that I know of that is longer than 6 words, and I don;t think anyone will mind if it does not support the card:
-	#Our market research showsthat players like really long names so we made this card to have the absolute longest card name ever elemental
+	#Searches the message for card names containing 1-6 words. To the best o fmy knowledge, every MTG card except the one above fits this criteria
 	for wordLen in range(1,7):
 		searchableWords = assembleStrings(messagy, wordLen)
 		#print assembleStrings(messagy,wordLen)
@@ -60,7 +58,7 @@ data = json.load(f)
 
 
 #Reddit bt framework based heavily on supplied python example code
-userAgent = "python:MTGcourtesy v0.5 by emorelleum"
+userAgent = "python:MTGcourtesy v1.0 by emorelleum"
 reddy = praw.Reddit(user_agent = userAgent)
 
 #setups for lists to keep track of what we have seen
@@ -88,63 +86,60 @@ namey = credFile.readline().strip('\n')
 wordy = credFile.readline().strip('\n')
 reddy.login(namey,wordy)
 
-#infinite loop via python wrapper
-while True:
-	submissions = reddy.get_subreddit("UMW_CPSC470Z").get_hot(limit=None)
+#This code to get the submissions is from the praw documentation
+submissions = reddy.get_subreddit("UMW_CPSC470Z").get_hot(limit=None)
+for submission in submissions:
+#	print submission.selftext
+	if "MTG_LINK" in submission.selftext and submission.id not in repliedPosts:
 
-	for submission in submissions:
-	#	print submission.selftext
-		if "MTG_LINK" in submission.selftext and submission.id not in repliedPosts:
-	
-			vals = searchForCards(submission.selftext)
+		vals = searchForCards(submission.selftext)
+		#construct the text of the post
+		post = "Courtesy Links for the post:\n\n"
+		for cards in vals:
+			post += "[" + cards['name'] + "](http://mtgimage.com/card/" + cards['imageName'] + ".jpg)\n\n"
+		print post
+		#if there were no characters added to the string, no cards were found
+		if len(post) > 30:
+			submission.add_comment(post)
+		else:
+			submission.add_comment("There were no MTG cards found in this submission")
+		repliedPosts.append(submission.id)
+	#get all the comments (from praw framework explanation)	
+	commentList = praw.helpers.flatten_tree(submission.comments)
+	for g in commentList:
+		#print g.body
+		if "MTG_LINK" in g.body and g.id not in repliedComments:
+			#print g.body
+			print " "
+			vals = searchForCards(g.body)
 			#construct the text of the post
-			post = "Courtesy Links for the post:\n\n"
+			post = "Courtesy Links:\n\n"
 			for cards in vals:
 				post += "[" + cards['name'] + "](http://mtgimage.com/card/" + cards['imageName'] + ".jpg)\n\n"
 			print post
-			#if there were no characters added to the string, no cards were found
-			if len(post) > 30:
-				submission.add_comment(post)
+			#If we did not find any cards to link to, then post an error
+			if len(post) > 20:
+				g.reply(post)
 			else:
-				submission.add_comment("There were no MTG cards found in this submission")
-			repliedPosts.append(submission.id)
-		#get all the comments (from praw framework explanation)	
-		comment_list = praw.helpers.flatten_tree(submission.comments)
-		for g in comment_list:
-			#print g.body
-			if "MTG_LINK" in g.body and g.id not in repliedComments:
-				#print g.body
-				print " "
-				vals = searchForCards(g.body)
-				#construct the text of the post
-				post = "Courtesy Links:\n\n"
-				for cards in vals:
-					post += "[" + cards['name'] + "](http://mtgimage.com/card/" + cards['imageName'] + ".jpg)\n\n"
-				print post
-				#If we did not find any cards to link to, then post an error
-				if len(post) > 20:
-					g.reply(post)
-				else:
-					g.reply("There were no MTG cards found in this comment")
-				repliedComments.append(g.id)
-	print "Saving....Do not turn off the power"
-	#write the contents of the arrays to their appropriate files. Not 100% sure what will happen if the program is interrupted here (I am no python guru), so hopefully it won;t be!
-	#mostly here so I can stop and start the bot without reposting a bunch of comments
-	postFile = open("postFile.txt",'w')
-	for records in repliedPosts:
-		postFile.write(records+'\n')
+				g.reply("There were no MTG cards found in this comment")
+			repliedComments.append(g.id)
+print "Saving....Do not turn off the power"
+#write the contents of the arrays to their appropriate files. Not 100% sure what will happen if the program is interrupted here (I am no python guru), so hopefully it won;t be!
+#mostly here so I can stop and start the bot without reposting a bunch of comments
+postFile = open("postFile.txt",'w')
+for records in repliedPosts:
+	postFile.write(records+'\n')
+postFile.flush()
+postFile.close()
+commentFile = open("commentFile.txt",'w')
+for records in repliedComments:
+	commentFile.write(records+'\n')
+commentFile.flush()
+commentFile.close()
 
-	postFile.flush()
-	postFile.close()
+#end program, Cron will insure that it runs again
 
-	commentFile = open("commentFile.txt",'w')
-	for records in repliedComments:
-		commentFile.write(records+'\n')
-
-	commentFile.flush()
-	commentFile.close()
-	
-	print "sleeping"
-	time.sleep(30)
-	print "Woke Up!"
-	print ""
+#print "sleeping"
+#time.sleep(30)
+#print "Woke Up!"
+#print ""
